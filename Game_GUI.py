@@ -1,20 +1,25 @@
 # -*- coding: utf-8 -*-
 # ================================
 # name: 2048.py
-# version: 1.0.0
-# coder: 律酱大爱
-# ================================
-# version: 1.0.1
-# coder: heibanke
+# version: 1.0.2
+# coder: Frost Ming
+# email: mianghong@gmail.com
 # ================================
 import wx
 import os
 import random
-import copy
+
+
+def transpose(matrix):
+    return [list(row) for row in zip(*matrix)]
+
+
+def invert(matrix):
+    return [row[::-1] for row in matrix]
 
 
 class Frame(wx.Frame):
-    def __init__(self, title, size=4):
+    def __init__(self, title, size=4, win=2048):
         super(Frame, self).__init__(None, -1, title,
                                     style=wx.DEFAULT_FRAME_STYLE ^ wx.MAXIMIZE_BOX ^ wx.RESIZE_BORDER)
         self.colors = {0: (204, 192, 179),
@@ -32,6 +37,7 @@ class Frame(wx.Frame):
                        4096: (237, 207, 114),
                        8192: (237, 207, 114)}
         self.size = size
+        self.win = win
         self.setIcon()
         self.initGame()
         panel = wx.Panel(self)
@@ -70,11 +76,13 @@ class Frame(wx.Frame):
     def initGame(self):
         self.bgFont = wx.Font(50, wx.SWISS, wx.NORMAL, wx.BOLD, face=u"Roboto")
         self.scFont = wx.Font(36, wx.SWISS, wx.NORMAL, wx.BOLD, face=u"Roboto")
-        self.smFont = wx.Font(12, wx.SWISS, wx.NORMAL, wx.NORMAL, face=u"Roboto")
+        self.smFont = wx.Font(
+            12, wx.SWISS, wx.NORMAL, wx.NORMAL, face=u"Roboto")
         self.curScore = 0
         self.bstScore = 0
+        self.changeScore = False
         self.loadScore()
-        self.data = [[0]*self.size for i in range(self.size)]
+        self.data = [[0] * self.size for i in range(self.size)]
         self.putTile()
         self.putTile()
 
@@ -87,101 +95,100 @@ class Frame(wx.Frame):
         self.drawAll()
 
     def putTile(self):
-        new_element = 2 if random.randrange(100) > 80 else 4
-        x, y = random.choice([(i,j) for i in range(self.size) for j in range(self.size) if self.data[i][j]==0])
+        new_element = 2 if random.randrange(100) < 89 else 4
+        x, y = random.choice([(i, j) for i in range(self.size)
+                              for j in range(self.size) if self.data[i][j] == 0])
         self.data[x][y] = new_element
 
-    def update(self, vlist, direct):
-        score = 0
-        if direct:  # up or left
-            i = 1
-            while i < len(vlist):
-                if vlist[i - 1] == vlist[i]:
-                    del vlist[i]
-                    vlist[i - 1] *= 2
-                    score += vlist[i - 1]
-                    i += 1
-                i += 1
-        else:
-            i = len(vlist) - 1
-            while i > 0:
-                if vlist[i - 1] == vlist[i]:
-                    del vlist[i]
-                    vlist[i - 1] *= 2
-                    score += vlist[i - 1]
-                    i -= 1
-                i -= 1
-        return score
-
-    def slideUpDown(self, up):
-        score = 0
-        numCols = len(self.data[0])
-        numRows = len(self.data)
-        oldData = copy.deepcopy(self.data)
-
-        for col in range(numCols):
-            cvl = [self.data[row][col] for row in range(numRows) if self.data[row][col] != 0]
-            if len(cvl) >= 2:
-                score += self.update(cvl, up)
-            for i in range(numRows - len(cvl)):
-                if up:
-                    cvl.append(0)
-                else:
-                    cvl.insert(0, 0)
-            for row in range(numRows): self.data[row][col] = cvl[row]
-        return oldData != self.data, score
-
-    def slideLeftRight(self, left):
-        score = 0
-        numRows = len(self.data)
-        numCols = len(self.data[0])
-        oldData = copy.deepcopy(self.data)
-
-        for row in range(numRows):
-            rvl = [self.data[row][col] for col in range(numCols) if self.data[row][col] != 0]
-            if len(rvl) >= 2:
-                score += self.update(rvl, left)
-            for i in range(numCols - len(rvl)):
-                if left:
-                    rvl.append(0)
-                else:
-                    rvl.insert(0, 0)
-            for col in range(numCols): self.data[row][col] = rvl[col]
-        return oldData != self.data, score
-
     def isGameOver(self):
-        copyData = copy.deepcopy(self.data)
+        return not any(self.isMoveable(direction) for direction in
+                       [wx.WXK_LEFT, wx.WXK_RIGHT, wx.WXK_UP, wx.WXK_DOWN])
 
-        flag = False
-        if not self.slideUpDown(True)[0] and not self.slideUpDown(False)[0] and \
-                not self.slideLeftRight(True)[0] and not self.slideLeftRight(False)[0]:
-            flag = True
-        if not flag: self.data = copyData
-        return flag
+    def isWin(self):
+        return any(self.data[i][j] >= self.win for i in range(self.size) for j in range(self.size))
 
-    def doMove(self, move, score):
-        if move:
+    def doMove(self, direction):
+        def move_left(row):
+            def tighten(row):
+                new_row = [i for i in row if i != 0]
+                new_row += [0] * (len(row) - len(new_row))
+                return new_row
+
+            def merge(row):
+                new_row = []
+                i = 0
+                while i < len(row) and row[i]:
+                    if i < len(row) - 1 and row[i] == row[i + 1]:
+                        new_row.append(2 * row[i])
+                        self.curScore += 2 * row[i]
+                        self.changeScore = True
+                        i += 2
+                    else:
+                        new_row.append(row[i])
+                        i += 1
+                new_row += [0] * (len(row) - len(new_row))
+                return new_row
+
+            return merge(tighten(row))
+
+        moves = dict()
+        moves[wx.WXK_LEFT] = lambda matrix: [move_left(row) for row in matrix]
+        moves[wx.WXK_RIGHT] = lambda matrix: invert(
+            moves[wx.WXK_LEFT](invert(matrix)))
+        moves[wx.WXK_UP] = lambda matrix: transpose(
+            moves[wx.WXK_LEFT](transpose(matrix)))
+        moves[wx.WXK_DOWN] = lambda matrix: transpose(
+            moves[wx.WXK_RIGHT](transpose(matrix)))
+
+        if direction in moves:
+            if self.isMoveable(direction):
+                self.data = moves[direction](self.data)
+                return True
+            else:
+                return False
+
+    def isMoveable(self, direction):
+        def row_is_left_moveable(row):
+            def change(i):
+                if row[i] == 0 and row[i + 1] != 0:
+                    return True
+                if row[i] and row[i] == row[i + 1]:
+                    return True
+                return False
+            return any(change(i) for i in range(len(row) - 1))
+
+        check = dict()
+        check[wx.WXK_LEFT] = lambda matrix: any(
+            row_is_left_moveable(row) for row in matrix)
+        check[wx.WXK_RIGHT] = lambda matrix: check[wx.WXK_LEFT](invert(matrix))
+        check[wx.WXK_UP] = lambda matrix: check[wx.WXK_LEFT](transpose(matrix))
+        check[wx.WXK_DOWN] = lambda matrix: check[
+            wx.WXK_RIGHT](transpose(matrix))
+
+        if direction in check:
+            return check[direction](self.data)
+        else:
+            return False
+
+    def onKeyDown(self, event):
+        keyCode = event.GetKeyCode()
+        if self.doMove(keyCode):
             self.putTile()
-            self.drawChange(score)
+            self.drawChange()
             if self.isGameOver():
-                if wx.MessageBox(u"游戏结束，是否重新开始？", u"哈哈",
+                if wx.MessageBox(u"GAME OVER, restart?", u"Oops!",
                                  wx.YES_NO | wx.ICON_INFORMATION) == wx.YES:
                     bstScore = self.bstScore
                     self.initGame()
                     self.bstScore = bstScore
                     self.drawAll()
-
-    def onKeyDown(self, event):
-        keyCode = event.GetKeyCode()
-
-        if keyCode == wx.WXK_UP:
-            self.doMove(*self.slideUpDown(True))
-        elif keyCode == wx.WXK_DOWN:
-            self.doMove(*self.slideUpDown(False))
-        elif keyCode == wx.WXK_LEFT:
-            self.doMove(*self.slideLeftRight(True))
-        elif keyCode == wx.WXK_RIGHT:
-            self.doMove(*self.slideLeftRight(False))
+            if self.isWin():
+                if wx.MessageBox(u"YOU WIN!, restart?", u"Congratulations!",
+                                 wx.YES_NO | wx.ICON_INFORMATION) == wx.YES:
+                    bstScore = self.bstScore
+                    self.initGame()
+                    self.bstScore = bstScore
+                    self.drawAll()
 
     def drawBg(self, dc):
         dc.SetBackground(wx.Brush((250, 248, 239)))
@@ -198,9 +205,9 @@ class Frame(wx.Frame):
     def drawLabel(self, dc):
         dc.SetFont(self.smFont)
         dc.SetTextForeground((119, 110, 101))
-        dc.DrawText(u"合并相同数字，得到2048吧!", 15, 114)
-        dc.DrawText(u"怎么玩: \n用-> <- 上下左右箭头按键来移动方块. \
-                \n当两个相同数字的方块碰到一起时，会合成一个!", 15, 639)
+        dc.DrawText(u"Merge tiles to get 2048!", 15, 114)
+        dc.DrawText(u"Hint: \nPress up, down, left, right to move tiles. \
+                \nTiles will merge into one when they are equal", 15, 639)
 
     def drawScore(self, dc):
         dc.SetFont(self.smFont)
@@ -216,21 +223,25 @@ class Frame(wx.Frame):
         bstScoreBoardW = max(bstScoreBoardMinW, bstScoreBoardNedW)
         dc.SetBrush(wx.Brush((187, 173, 160)))
         dc.SetPen(wx.Pen((187, 173, 160)))
-        dc.DrawRoundedRectangle(505 - 15 - bstScoreBoardW, 40, bstScoreBoardW, 50, 3)
-        dc.DrawRoundedRectangle(505 - 15 - bstScoreBoardW - 5 - curScoreBoardW, 40, curScoreBoardW, 50, 3)
+        dc.DrawRoundedRectangle(
+            505 - 15 - bstScoreBoardW, 40, bstScoreBoardW, 50, 3)
+        dc.DrawRoundedRectangle(
+            505 - 15 - bstScoreBoardW - 5 - curScoreBoardW, 40, curScoreBoardW, 50, 3)
         dc.SetTextForeground((238, 228, 218))
-        dc.DrawText(u"BEST", 505 - 15 - bstScoreBoardW + (bstScoreBoardW - bestLabelSize[0]) / 2, 48)
+        dc.DrawText(u"BEST", 505 - 15 - bstScoreBoardW +
+                    (bstScoreBoardW - bestLabelSize[0]) / 2, 48)
         dc.DrawText(u"SCORE", 505 - 15 - bstScoreBoardW - 5 - curScoreBoardW + (curScoreBoardW - scoreLabelSize[0]) / 2,
                     48)
         dc.SetTextForeground((255, 255, 255))
-        dc.DrawText(str(self.bstScore), 505 - 15 - bstScoreBoardW + (bstScoreBoardW - bstScoreSize[0]) / 2, 68)
+        dc.DrawText(str(self.bstScore), 505 - 15 -
+                    bstScoreBoardW + (bstScoreBoardW - bstScoreSize[0]) / 2, 68)
         dc.DrawText(str(self.curScore),
                     505 - 15 - bstScoreBoardW - 5 - curScoreBoardW + (curScoreBoardW - curScoreSize[0]) / 2, 68)
 
     def drawTiles(self, dc):
         dc.SetFont(self.scFont)
-        for row in range(4):
-            for col in range(4):
+        for row in range(self.size):
+            for col in range(self.size):
                 value = self.data[row][col]
                 color = self.colors[value]
                 if value == 2 or value == 4:
@@ -239,15 +250,17 @@ class Frame(wx.Frame):
                     dc.SetTextForeground((255, 255, 255))
                 dc.SetBrush(wx.Brush(color))
                 dc.SetPen(wx.Pen(color))
-                dc.DrawRoundedRectangle(30 + col * 115, 165 + row * 115, 100, 100, 2)
+                dc.DrawRoundedRectangle(
+                    30 + col * 115, 165 + row * 115, 100, 100, 2)
                 size = dc.GetTextExtent(str(value))
                 while size[0] > 100 - 15 * 2:
                     self.scFont = wx.Font(self.scFont.GetPointSize() * 4 / 5, wx.SWISS, wx.NORMAL, wx.BOLD,
                                           face=u"Roboto")
                     dc.SetFont(self.scFont)
                     size = dc.GetTextExtent(str(value))
-                if value != 0: dc.DrawText(str(value), 30 + col * 115 + (100 - size[0]) / 2,
-                                           165 + row * 115 + (100 - size[1]) / 2)
+                if value != 0:
+                    dc.DrawText(str(value), 30 + col * 115 + (100 - size[0]) / 2,
+                                165 + row * 115 + (100 - size[1]) / 2)
 
     def drawAll(self):
         dc = wx.BufferedDC(wx.ClientDC(self), self.buffer)
@@ -257,17 +270,16 @@ class Frame(wx.Frame):
         self.drawScore(dc)
         self.drawTiles(dc)
 
-    def drawChange(self, score):
+    def drawChange(self):
         dc = wx.BufferedDC(wx.ClientDC(self), self.buffer)
-        if score:
-            self.curScore += score
-            if self.curScore > self.bstScore:
-                self.bstScore = self.curScore
+        if self.curScore > self.bstScore:
+            self.bstScore = self.curScore
+        if self.changeScore:
             self.drawScore(dc)
         self.drawTiles(dc)
 
 
 if __name__ == "__main__":
     app = wx.App()
-    Frame(u"2048 v1.0.1 by heibanke")
+    Frame(u"2048 v1.0.2 by Frost Ming")
     app.MainLoop()
