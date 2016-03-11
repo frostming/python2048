@@ -41,7 +41,7 @@ class Frame(wx.Frame):
         self.setIcon()
         self.initGame()
         panel = wx.Panel(self)
-        panel.Bind(wx.EVT_KEY_DOWN, self.onKeyDown)
+        panel.Bind(wx.EVT_KEY_UP, self.onKeyDown)
         panel.SetFocus()
         self.initBuffer()
         self.Bind(wx.EVT_SIZE, self.onSize)
@@ -239,7 +239,6 @@ class Frame(wx.Frame):
                     505 - 15 - bstScoreBoardW - 5 - curScoreBoardW + (curScoreBoardW - curScoreSize[0]) / 2, 68)
 
     def drawTiles(self, dc):
-        dc.SetFont(self.scFont)
         for row in range(self.size):
             for col in range(self.size):
                 value = self.data[row][col]
@@ -252,11 +251,13 @@ class Frame(wx.Frame):
                 dc.SetPen(wx.Pen(color))
                 dc.DrawRoundedRectangle(
                     30 + col * 115, 165 + row * 115, 100, 100, 2)
+                sc_font = self.scFont
+                dc.SetFont(sc_font)
                 size = dc.GetTextExtent(str(value))
                 while size[0] > 100 - 15 * 2:
-                    self.scFont = wx.Font(self.scFont.GetPointSize() * 4 / 5, wx.SWISS, wx.NORMAL, wx.BOLD,
-                                          face=u"Roboto")
-                    dc.SetFont(self.scFont)
+                    sc_font = wx.Font(sc_font.GetPointSize() * 4 / 5, wx.SWISS, wx.NORMAL, wx.BOLD,
+                                      face=u"Roboto")
+                    dc.SetFont(sc_font)
                     size = dc.GetTextExtent(str(value))
                 if value != 0:
                     dc.DrawText(str(value), 30 + col * 115 + (100 - size[0]) / 2,
